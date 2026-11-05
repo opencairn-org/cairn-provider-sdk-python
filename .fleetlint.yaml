@@ -1,0 +1,16 @@
+# .fleetlint.yaml: https://github.com/fleetlint/fleetlint
+version: 1
+extends:
+  - fleetlint:recommended
+facts:
+  visibility: public   # the repository is public on github.com/opencairn-org; update it if that changes
+  tier: 1
+scopes:   # each directory is checked as a project of the stacks listed, as detected at init
+  - path: .
+    stacks: [python]
+# discovered: stacks=[python] forge=github layout=single release=yes taskrunner=make container=none
+# Facts are re-detected on every run; pin one under `facts:` only when detection is wrong.
+overrides:
+  changelog/generator-configured:
+    enabled: false
+    reason: "CHANGELOG.md is curated by hand (Keep a Changelog); `make release` refuses a tag without its section"

@@ -1,0 +1,9 @@
+# When mounted as a build context of a worker image: sources and metadata only.
+*
+!pyproject.toml
+!README.md
+!LICENSE
+!cairn_provider_sdk/
+!cairn/
+**/__pycache__
+**/*.pyc

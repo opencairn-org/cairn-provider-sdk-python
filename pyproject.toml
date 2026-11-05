@@ -1,0 +1,125 @@
+[project]
+name = "cairn-provider-sdk"
+version = "0.7.0"
+description = "SDK for writing Cairn provider workers in Python: NATS runtime, claim-check results, archive, tokens, rate limits"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.14,<3.15"
+authors = [{ name = "Johannes Küber" }]
+keywords = ["cairn", "nats", "worker", "sdk"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.14",
+    "Framework :: AsyncIO",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "nats-py>=2.7.0",
+    "protobuf>=7.35",
+    "requests>=2.31",
+]
+
+[project.urls]
+Homepage = "https://github.com/opencairn-org/cairn-provider-sdk-python"
+Changelog = "https://github.com/opencairn-org/cairn-provider-sdk-python/blob/main/CHANGELOG.md"
+Documentation = "https://docs.opencairn.org/architecture/provider-contract"
+
+[dependency-groups]
+dev = [
+    "deptry",
+    "griffe",
+    "mutmut>=3.8.0",
+    "mypy",
+    "pip-audit",
+    "pip-licenses",
+    "pylint>=4.1.3",
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "types-protobuf>=7.35.1.20260906",
+    "types-requests",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# The SDK package plus the generated contract stubs (cairn.v1, cairn.worker.v1).
+packages = ["cairn_provider_sdk", "cairn"]
+
+[tool.hatch.build.targets.sdist]
+include = ["cairn_provider_sdk", "cairn", "tests", "examples", "docs", "scripts", "README.md", "CHANGELOG.md", "LICENSE"]
+
+[tool.uv]
+# A library: built and installed as a package.
+package = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+extend-exclude = ["cairn"]
+# Hooks pass file names; keep the generated stubs excluded then too.
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "RUF", "BLE", "S", "PT", "ASYNC", "C90", "T20"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+"examples/**" = ["S101", "S105", "S106", "S107"]
+# The testing kit asserts on its own wiring and starts nats-server by path.
+"cairn_provider_sdk/testing/**" = ["S101", "S603"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cairn_provider_sdk", "cairn", "tests", "examples"]
+
+[tool.mypy]
+strict = true
+python_version = "3.14"
+files = ["cairn_provider_sdk", "tests", "examples"]
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+# Generated protobuf stubs under cairn/: used for types, not checked themselves.
+module = ["cairn.*"]
+ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "examples"]
+pythonpath = ["."]
+addopts = "-q --strict-markers"
+
+[tool.coverage.run]
+source = ["cairn_provider_sdk"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true
+
+[tool.deptry]
+known_first_party = ["cairn_provider_sdk", "cairn", "tests", "examples"]
+# Generated stubs.
+extend_exclude = ["cairn/"]
+
+[tool.deptry.per_rule_ignores]
+# pytest is only imported by the example test (dev group).
+DEP004 = ["pytest"]
+
+[tool.mutmut]
+# `make mutate`: weekly in CI, not part of check. The testing kit is test scaffolding.
+source_paths = ["cairn_provider_sdk/"]
+pytest_add_cli_args_test_selection = ["tests/", "examples/"]
+do_not_mutate = ["cairn_provider_sdk/testing/"]
+
+[tool.pylint.main]
+# Only the duplication check; ruff covers everything else (`make lint`).
+disable = ["all"]
+enable = ["duplicate-code"]
+
+[tool.pylint.similarities]
+min-similarity-lines = 8
+ignore-imports = true
