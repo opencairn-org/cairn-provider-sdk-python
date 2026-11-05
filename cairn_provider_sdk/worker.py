@@ -111,10 +111,10 @@ class Worker:
         self._stop = asyncio.Event()
         self._fatal: Exception | None = None  # set when core moves to an incompatible release
         self._handlers: dict[str, Handler] = {}
-        self._discover: DiscoverHandler | None = None
-        self._oauth_exchange: OAuthExchangeHandler | None = None
-        self._webhook_event: WebhookEventHandler | None = None
-        self._webhook_verify: WebhookVerifyHandler | None = None
+        self._discover_fn: DiscoverHandler | None = None
+        self._oauth_exchange_fn: OAuthExchangeHandler | None = None
+        self._webhook_event_fn: WebhookEventHandler | None = None
+        self._webhook_verify_fn: WebhookVerifyHandler | None = None
         self.tokens = TokenSource(self, refresh)
 
     # --- registration (before run) ---
@@ -127,16 +127,16 @@ class Worker:
         self._handlers[job] = handler
 
     def on_discover(self, fn: DiscoverHandler) -> None:
-        self._discover = fn
+        self._discover_fn = fn
 
     def on_oauth_exchange(self, fn: OAuthExchangeHandler) -> None:
-        self._oauth_exchange = fn
+        self._oauth_exchange_fn = fn
 
     def on_webhook_event(self, fn: WebhookEventHandler) -> None:
-        self._webhook_event = fn
+        self._webhook_event_fn = fn
 
     def on_webhook_verify(self, fn: WebhookVerifyHandler) -> None:
-        self._webhook_verify = fn
+        self._webhook_verify_fn = fn
 
     @property
     def jobs(self) -> tuple[str, ...]:
@@ -144,7 +144,7 @@ class Worker:
 
     @property
     def webhooks(self) -> bool:
-        return self._webhook_event is not None
+        return self._webhook_event_fn is not None
 
     # --- connection ---
     @property
@@ -181,17 +181,17 @@ class Worker:
         await self.connect()
         await self._check_core_release()
         ident = self.identity
-        if self._discover is not None:
+        if self._discover_fn is not None:
             await self._nats.subscribe(ident.discover_subject, cb=self._on_discover)
-        if self._oauth_exchange is not None:
+        if self._oauth_exchange_fn is not None:
             await self._nats.subscribe(ident.oauth_exchange_subject, cb=self._on_oauth_exchange)
-        if self._webhook_verify is not None:
+        if self._webhook_verify_fn is not None:
             await self._nats.subscribe(ident.webhook_verify_subject, cb=self._on_webhook_verify)
         tasks = [asyncio.create_task(self._heartbeat_loop()), asyncio.create_task(self._manifest_loop())]
         for job, handler in self._handlers.items():
             durable = f"{ident.worker_name}-{C.DURABLE_SUFFIX[job]}"
             tasks.append(asyncio.create_task(self._consume(ident.job_subject(job), durable, handler)))
-        if self._webhook_event is not None:
+        if self._webhook_event_fn is not None:
             durable = f"{ident.worker_name}-webhook"
             tasks.append(
                 asyncio.create_task(
@@ -200,7 +200,7 @@ class Worker:
             )
         log.info(
             "serving %s; pulling %s",
-            ident.discover_subject if self._discover else "no discover",
+            ident.discover_subject if self._discover_fn else "no discover",
             ", ".join(ident.job_subject(j) for j in self._handlers) or "no jobs",
         )
         await self._stop.wait()
@@ -301,7 +301,7 @@ class Worker:
     async def _on_discover(self, msg: Msg) -> None:
         try:
             req = json.loads(msg.data)
-            resp = await _required(self._discover)(req if isinstance(req, dict) else {})
+            resp = await _required(self._discover_fn)(req if isinstance(req, dict) else {})
         except Exception as e:  # noqa: BLE001
             log.error("discover error: %s", e)
             resp = {"error": str(e)}
@@ -314,7 +314,7 @@ class Worker:
             reply = OAuthExchangeReply.failure("bad_request", "undecodable request")
         else:
             try:
-                reply = await _required(self._oauth_exchange)(req)
+                reply = await _required(self._oauth_exchange_fn)(req)
             except Exception as e:  # noqa: BLE001
                 reply = OAuthExchangeReply.failure("transient", str(e))
             if reply.error:
@@ -324,14 +324,14 @@ class Worker:
     async def _on_webhook_verify(self, msg: Msg) -> None:
         try:
             req = WebhookVerifyRequest.from_json(json.loads(msg.data))
-            resp = await _required(self._webhook_verify)(req)
+            resp = await _required(self._webhook_verify_fn)(req)
         except Exception as e:  # noqa: BLE001
             log.error("webhook verify error: %s", e)
             resp = WebhookVerifyResponse(status=500, content_type="text/plain", body=str(e).encode())
         await msg.respond(json.dumps(resp.to_json()).encode())
 
     async def _dispatch_webhook(self, job: Job) -> None:
-        await _required(self._webhook_event)(WebhookEvent(job.subject, job.headers, job.body, job.delivered))
+        await _required(self._webhook_event_fn)(WebhookEvent(job.subject, job.headers, job.body, job.delivered))
 
     # --- pull consumption ---
     async def _extend_ack(self, m: Msg) -> None:
