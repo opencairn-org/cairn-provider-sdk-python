@@ -199,3 +199,20 @@ def test_force_refill_leaves_exactly_the_available_tokens_until_the_reset() -> N
     assert asyncio.run(rl.reserve("p:a:minute")) == (False, 40)
     clock.at = reset
     assert asyncio.run(rl.reserve("p:a:minute"))[0] is True
+
+
+def test_provider_reported_usage_is_the_budget() -> None:
+    clock = Clock(datetime(2026, 5, 18, 12, 0, tzinfo=UTC))
+    rl, _ = limiter({"p:a:minute": 10}, now=clock.now)
+    reset = clock.at + timedelta(seconds=30)
+    # Nothing used of a limit of 2: exactly two calls.
+    asyncio.run(rl.sync_usage("p:a:minute", used=0, limit=2, resets_at=reset))
+    assert [asyncio.run(rl.reserve("p:a:minute"))[0] for _ in range(3)] == [True, True, False]
+    # A limit of 1 is a limit, and it carries into the next window.
+    asyncio.run(rl.sync_usage("p:a:minute", used=1, limit=1, resets_at=reset))
+    assert asyncio.run(rl.reserve("p:a:minute"))[0] is False
+    clock.at = reset
+    assert [asyncio.run(rl.reserve("p:a:minute"))[0] for _ in range(2)] == [True, False]
+    # The wait is the time left in the window, however short.
+    clock.at = reset + timedelta(seconds=59.5)
+    assert asyncio.run(rl.reserve("p:a:minute")) == (False, 0.5)
