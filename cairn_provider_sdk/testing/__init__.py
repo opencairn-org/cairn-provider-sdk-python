@@ -27,6 +27,7 @@ from .integration import (
     token_fields,
     until,
 )
+from .validate import assert_importable, result_problems, validate_activity, validate_metric
 
 __all__ = [
     "BlobStore",
@@ -41,11 +42,15 @@ __all__ = [
     "Responder",
     "Result",
     "as_nats",
+    "assert_importable",
     "bootstrap_core",
     "example_identity",
     "example_settings",
     "make_worker",
     "nats_server_binary",
+    "result_problems",
     "token_fields",
     "until",
+    "validate_activity",
+    "validate_metric",
 ]

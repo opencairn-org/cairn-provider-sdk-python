@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from cairn.v1 import activity_pb2 as a
 from cairn.worker.v1 import worker_service_pb2 as w
 from cairn_provider_sdk import (
     ClientCreds,
@@ -49,7 +50,8 @@ def settings(url: str, instance: str = "i1") -> Settings:
 
 def event(ext_id: str, account_id: str = "acc-1") -> w.WorkerEvent:
     ref = w.ExternalRef(user_id="u1", provider="acme", external_account_id=account_id, external_id=ext_id)
-    return w.WorkerEvent(type=w.WORKER_EVENT_TYPE_ACTIVITY, activity=w.ImportedActivity(ref=ref))
+    payload = a.ActivitySourcePayload(type=a.ACTIVITY_TYPE_RUN, timezone="Europe/Berlin")
+    return w.WorkerEvent(type=w.WORKER_EVENT_TYPE_ACTIVITY, activity=w.ImportedActivity(ref=ref, payload=payload))
 
 
 class EchoWorker(Worker):

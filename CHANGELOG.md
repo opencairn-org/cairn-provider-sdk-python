@@ -8,6 +8,16 @@ major.minor tracks cairn-core. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Added
+- `cairn_provider_sdk.testing`: `validate_activity`, `validate_metric`,
+  `result_problems` and `assert_importable` apply core's import rules to a
+  result (activity: known type, time order, durations, IANA timezone;
+  metric: user, account and external_id set, a timestamp, one value, a
+  health data type or valid store key, the value shape a reserved key
+  dictates; a value sent both as a data type and as its reserved store
+  twin), as the Go SDK's `sdktest` does. `FakeCore` records the problems of
+  every result it collects and `close()` fails on any.
+
 ### Fixed
 - Integration tests: each test runs against its own `nats-server` with core's
   streams and buckets bootstrapped; three tests passed only after the first

@@ -44,6 +44,7 @@ from cairn.worker.v1 import worker_service_pb2 as w
 from .. import config as C
 from ..config import Identity
 from ..rfc3339 import format_time, parse_time
+from .validate import result_problems
 
 # --- nats-server ---
 
@@ -234,6 +235,7 @@ class Result:
     subject: str
     envelope: w.JobResult
     job_result: w.JobResult  # the full body: payload_ref resolved from the blob store
+    problems: list[str] = field(default_factory=list)  # what core would reject or refuse
 
     @property
     def job(self) -> str:
@@ -279,6 +281,8 @@ class FakeCore:
         self.requests: list[tuple[str, dict[str, Any]]] = []
         self.token_stores: list[dict[str, Any]] = []
         self.reauth: list[dict[str, Any]] = []
+        # Results core would not import (validate.result_problems); close() fails on any.
+        self.problems: list[str] = []
         self._n = 0
 
     @classmethod
@@ -300,8 +304,10 @@ class FakeCore:
         return core
 
     async def close(self) -> None:
+        """Disconnect; raises AssertionError when a result broke core's import rules."""
         await self.nc.close()
         self.blobs.close()
+        assert not self.problems, "core would not import these results:\n  " + "\n  ".join(self.problems)
 
     def account(self, account_id: str, **fields: Any) -> FakeAccount:
         acc = FakeAccount(account_id, **fields)
@@ -335,7 +341,9 @@ class FakeCore:
         if env.HasField("payload_ref"):
             body = self.blobs.blobs.get(env.payload_ref.blob_id)
             full = json_format.Parse(body, w.JobResult()) if body is not None else env
-        self.results.append(Result(m.subject, env, full))
+        problems = result_problems(full)
+        self.problems.extend(f"{m.subject}: {p}" for p in problems)
+        self.results.append(Result(m.subject, env, full, problems))
 
     async def _presign_upload(self, m: Msg) -> None:
         req = self._req(m)
