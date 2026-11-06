@@ -216,3 +216,94 @@ def test_lock_handles_release_between_create_and_get() -> None:
 def test_invalidate_an_unknown_account() -> None:
     ts, _, _ = source({})
     ts.invalidate("never-seen")
+
+
+def test_failure_reasons_and_retry_hints() -> None:
+    # The reason decides terminal (re-authorize) vs retry; the hint is when.
+    cases: list[tuple[dict[str, Any], str, float]] = [
+        ({GET: token("old", -10)}, "no_refresh", 0),  # nothing can refresh it
+        ({}, "transient", 30),  # core did not answer
+        ({GET: {"error": "transient"}}, "transient", 30),  # no retry_after: the default
+        ({GET: [["not", "an", "object"]]}, "malformed reply", 30),
+    ]
+    for replies, reason, retry in cases:
+        ts, _, _ = source(replies)
+        with pytest.raises(TokenError) as e:
+            asyncio.run(ts.get("acc"))
+        assert (e.value.reason, e.value.terminal, e.value.retry_after_s) == (reason, False, retry), replies
+
+
+def test_busy_lock_reason_and_lease() -> None:
+    async def refresh(state: TokenState, creds: ClientCreds) -> TokenState:
+        raise AssertionError("must not refresh")
+
+    ts, _, kv = source({GET: [token("old", -10)]}, refresh)
+    ts.LOCK_TTL_S = 0.01
+    lease = {"owner": "other", "expires_at": format_time(datetime.now(UTC) + timedelta(hours=1))}
+    asyncio.run(kv.put("lock.acme.acc", json.dumps(lease).encode()))
+    with pytest.raises(TokenError) as e:
+        asyncio.run(ts.get("acc"))
+    assert (e.value.reason, e.value.terminal, e.value.retry_after_s) == ("transient", False, 5)
+    assert json.loads(kv.store["lock.acme.acc"].value or b"{}")["owner"] == "other"  # never taken
+
+
+def test_refresh_uses_the_connection_creds_and_stores_the_previous_expiry() -> None:
+    seen: list[ClientCreds] = []
+
+    async def refresh(state: TokenState, creds: ClientCreds) -> TokenState:
+        seen.append(creds)
+        return TokenState(access_token="new", app_id="own", expires_at=datetime.now(UTC) + timedelta(hours=1))
+
+    old = token("old", -10, client_id="conn-id", client_secret="conn-secret")
+    ts, nc, _ = source({GET: [old, old], STORE: {"ok": True}}, refresh)
+    got = asyncio.run(ts.get("acc"))
+    assert seen == [ClientCreds("conn-id", "conn-secret")]
+    assert got.app_id == "own"  # the refresher's app id wins over the stored one
+    store = next(body for subj, body in nc.requests if subj == STORE)
+    assert store["previous_expires_at"] == old["expires_at"]
+
+    # Only a refresh token, no expiry: the store says so with the zero time.
+    bare = {"refresh_token": "rt", "client_id": "cid"}
+    ts2, nc2, _ = source({GET: [bare, bare], STORE: {"ok": True}}, refresh)
+    asyncio.run(ts2.get("acc"))
+    store2 = next(body for subj, body in nc2.requests if subj == STORE)
+    assert store2["previous_expires_at"] == "0001-01-01T00:00:00Z"
+
+
+def test_store_failure_reasons() -> None:
+    async def refresh(state: TokenState, creds: ClientCreds) -> TokenState:
+        return TokenState(access_token="n", expires_at=datetime.now(UTC) + timedelta(hours=1))
+
+    for reply, reason in [({"error": "account_gone"}, "account_gone"), ({}, "unknown")]:
+        ts, _, _ = source({GET: [token("old", -10), token("old", -10)], STORE: reply}, refresh)
+        with pytest.raises(TokenError) as e:
+            asyncio.run(ts.get("acc"))
+        assert e.value.reason == reason
+        assert e.value.terminal == (reason == "account_gone")
+
+
+def test_token_state_json_fields() -> None:
+    at = datetime(2026, 11, 6, 9, 0, tzinfo=UTC)
+    d = {
+        "access_token": "a",
+        "refresh_token": "r",
+        "expires_at": format_time(at),
+        "scope": "s",
+        "token_type": "Bearer",
+        "app_id": "x",
+    }
+    s = TokenState.from_json(d)
+    assert (s.access_token, s.refresh_token, s.expires_at, s.scope, s.token_type, s.app_id) == (
+        "a",
+        "r",
+        at,
+        "s",
+        "Bearer",
+        "x",
+    )
+    assert s.to_json() == {k: v for k, v in d.items() if k != "app_id"}
+    assert TokenState.from_json({}) == TokenState()
+    assert TokenState(access_token="a").to_json() == {"access_token": "a"}
+    soon = TokenState(access_token="a", expires_at=datetime.now(UTC) + timedelta(seconds=30))
+    assert not soon.fresh()
+    assert soon.fresh(skew_s=10)
