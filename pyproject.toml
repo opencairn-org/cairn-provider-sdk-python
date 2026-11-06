@@ -113,7 +113,9 @@ DEP004 = ["pytest"]
 # `make mutate`: weekly in CI, not part of check. The testing kit is test scaffolding.
 source_paths = ["cairn_provider_sdk/"]
 pytest_add_cli_args_test_selection = ["tests/", "examples/"]
-do_not_mutate = ["cairn_provider_sdk/testing/"]
+do_not_mutate = ["cairn_provider_sdk/testing/*"]
+# The test selection imports the examples and the generated proto package.
+also_copy = ["examples/", "cairn/"]
 
 [tool.pylint.main]
 # Only the duplication check; ruff covers everything else (`make lint`).

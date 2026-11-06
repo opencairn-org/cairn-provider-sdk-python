@@ -12,6 +12,9 @@ major.minor tracks cairn-core. Dates are ISO-8601.
 - Integration tests: each test runs against its own `nats-server` with core's
   streams and buckets bootstrapped; three tests passed only after the first
   one had created them (failed alone or in random order).
+- `make mutate`: the testing kit is excluded again (`testing/*`) and
+  `examples/` and the generated `cairn/` package are copied next to the
+  mutants, so the run gets past its baseline test run.
 
 ## [0.7.0] — 2026-11-05
 
