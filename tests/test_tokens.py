@@ -9,7 +9,7 @@ import pytest
 from nats.js.errors import KeyWrongLastSequenceError
 
 from cairn_provider_sdk import ClientCreds, TokenError, TokenSource, TokenState, Worker
-from cairn_provider_sdk.rfc3339 import format_time
+from cairn_provider_sdk.rfc3339 import format_time, parse_time
 from cairn_provider_sdk.testing import FakeKV, FakeNC, example_identity, example_settings, make_worker
 from cairn_provider_sdk.tokens import KVLock
 
@@ -307,3 +307,52 @@ def test_token_state_json_fields() -> None:
     soon = TokenState(access_token="a", expires_at=datetime.now(UTC) + timedelta(seconds=30))
     assert not soon.fresh()
     assert soon.fresh(skew_s=10)
+
+
+def test_lock_takeover_is_compare_and_set() -> None:
+    kv = FakeKV()
+    stale = {"owner": "dead", "expires_at": format_time(datetime.now(UTC) - timedelta(seconds=1))}
+    asyncio.run(kv.put("lock.k", json.dumps(stale).encode()))
+    b = KVLock(kv.as_kv(), "lock.k", owner="b", ttl_s=60)
+    original_get, raced = kv.get, False
+
+    async def get_then_b_takes_over(key: str) -> Any:
+        nonlocal raced
+        entry = await original_get(key)
+        if not raced:  # b takes the expired lease over between a's read and a's write
+            raced = True
+            assert await b.try_acquire()
+        return entry
+
+    kv.get = get_then_b_takes_over  # type: ignore[method-assign]
+    assert not asyncio.run(KVLock(kv.as_kv(), "lock.k", owner="a", ttl_s=60).try_acquire())
+    assert json.loads(kv.store["lock.k"].value or b"")["owner"] == "b"
+
+
+def test_release_after_a_takeover_keeps_the_new_lease() -> None:
+    kv = FakeKV()
+    a = KVLock(kv.as_kv(), "lock.k", owner="a", ttl_s=-1)  # its lease has already run out
+    b = KVLock(kv.as_kv(), "lock.k", owner="b", ttl_s=60)
+
+    async def run() -> None:
+        assert await a.try_acquire()
+        assert await b.try_acquire()
+        await a.release()
+
+    asyncio.run(run())
+    assert json.loads(kv.store["lock.k"].value or b"")["owner"] == "b"
+
+
+def test_refresh_lease_names_this_instance_for_the_lock_ttl() -> None:
+    leases: list[dict[str, Any]] = []
+
+    async def refresh(state: TokenState, creds: ClientCreds) -> TokenState:
+        leases.append(json.loads(kv.store["lock.acme.acc"].value or b"{}"))
+        return TokenState(access_token="n", expires_at=datetime.now(UTC) + timedelta(hours=1))
+
+    ts, _, kv = source({GET: [token("old", -10), token("old", -10)], STORE: {"ok": True}}, refresh)
+    ts.LOCK_TTL_S = 120
+    asyncio.run(ts.get("acc"))
+    assert leases[0]["owner"] == ts._worker.cfg.instance_id
+    left = (parse_time(leases[0]["expires_at"]) - datetime.now(UTC)).total_seconds()  # type: ignore[operator]
+    assert 100 < left <= 120
