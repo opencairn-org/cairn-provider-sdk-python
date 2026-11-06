@@ -211,3 +211,8 @@ def test_lock_handles_release_between_create_and_get() -> None:
 
     kv.get = get_then_gone  # type: ignore[method-assign]
     assert not asyncio.run(KVLock(kv.as_kv(), "lock.k", owner="me").try_acquire())
+
+
+def test_invalidate_an_unknown_account() -> None:
+    ts, _, _ = source({})
+    ts.invalidate("never-seen")

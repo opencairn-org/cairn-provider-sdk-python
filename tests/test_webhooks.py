@@ -57,3 +57,14 @@ def test_verify_wire_types() -> None:
         "content_type": "application/json",
         "body": base64.b64encode(b"hi").decode(),
     }
+
+
+def test_signature_formats_are_strict() -> None:
+    # base64url signatures go out unpadded, as the providers send them.
+    assert "=" not in wh.sign(b"k", BODY, encoding="base64url", digest="sha1")
+    sig = wh.sign(b"k", BODY, encoding="base64")
+    assert not wh.verify(b"k", BODY, sig[:10] + "!" + sig[10:], encoding="base64")
+    assert wh.signed_payload(BODY, "1700000000") == b"1700000000." + BODY
+    # A value may itself contain "=" (base64 padding).
+    assert wh.parse_signature_header("t=1,v1=YWJj=") == {"t": "1", "v1": "YWJj="}
+    assert WebhookVerifyRequest.from_json({"method": "POST"}).method == "POST"

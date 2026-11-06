@@ -187,3 +187,15 @@ def test_create_race_on_first_reserve() -> None:
 def test_backoff_is_bounded() -> None:
     for attempt in range(12):
         assert 0 <= ratelimit._backoff(attempt) <= 0.02
+
+
+def test_force_refill_leaves_exactly_the_available_tokens_until_the_reset() -> None:
+    clock = Clock(datetime(2026, 5, 18, 12, 0, tzinfo=UTC))
+    rl, _ = limiter({"p:a:minute": 3}, now=clock.now)
+    reset = clock.at + timedelta(seconds=40)
+    asyncio.run(rl.force_refill("p:a:minute", available=3, resets_at=reset))
+    assert [asyncio.run(rl.reserve("p:a:minute"))[0] for _ in range(4)] == [True, True, True, False]
+    asyncio.run(rl.force_refill("p:a:minute", available=0, resets_at=reset))
+    assert asyncio.run(rl.reserve("p:a:minute")) == (False, 40)
+    clock.at = reset
+    assert asyncio.run(rl.reserve("p:a:minute"))[0] is True
