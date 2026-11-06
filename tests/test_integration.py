@@ -32,7 +32,8 @@ from cairn_provider_sdk.testing import FakeCore, NatsServer, nats_server_binary,
 IDENT = Identity(provider="acme", package="cairn.workers.acme", version="1.0", dataset_version=1, release="v0.7.0")
 
 
-@pytest.fixture(scope="module")
+# One server per test: a test must not depend on streams or buckets another test created.
+@pytest.fixture
 def server() -> Iterator[NatsServer]:
     if not nats_server_binary():
         if os.environ.get("CI"):
@@ -166,7 +167,7 @@ def test_worker_against_a_fake_core(server: NatsServer) -> None:
 
 def test_rate_limiter_on_the_real_bucket(server: NatsServer) -> None:
     async def scenario() -> None:
-        core = await FakeCore.start(server.url, provider="acme", bootstrap=False)
+        core = await FakeCore.start(server.url, provider="acme")
         a, b = Worker(IDENT, settings(server.url, "a")), Worker(IDENT, settings(server.url, "b"))
         await a.connect()
         await b.connect()
@@ -194,7 +195,7 @@ def test_token_refresh_is_locked_across_instances(server: NatsServer) -> None:
         return TokenState(access_token="fresh", refresh_token="rt2", expires_at=datetime.now(UTC) + timedelta(hours=1))
 
     async def scenario() -> None:
-        core = await FakeCore.start(server.url, provider="acme", bootstrap=False)
+        core = await FakeCore.start(server.url, provider="acme")
         acc = core.account("acc-1", client_id="cid", client_secret="cs", app_id="app")
         acc.token = token_fields("stale", expires_in_s=-5, refresh="rt")
         a = Worker(IDENT, settings(server.url, "a"), refresh=refresh)
@@ -225,13 +226,12 @@ async def _has_keys(kv: Any) -> bool:
 
 def test_incompatible_core_stops_the_worker(server: NatsServer) -> None:
     async def scenario() -> None:
-        core = await FakeCore.start(server.url, provider="acme", bootstrap=False)
+        core = await FakeCore.start(server.url, provider="acme")
         info = await core.js.key_value("cairn_core")
         await info.put("info", json.dumps({"release": "v0.8.0"}).encode())
         wk = EchoWorker(server.url, "z")
         with pytest.raises(Exception, match=r"major\.minor"):
             await wk.run()
-        await info.put("info", json.dumps({"release": "v0.7.3"}).encode())
         await core.close()
 
     asyncio.run(scenario())

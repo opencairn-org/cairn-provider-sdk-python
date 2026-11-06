@@ -8,6 +8,11 @@ major.minor tracks cairn-core. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Fixed
+- Integration tests: each test runs against its own `nats-server` with core's
+  streams and buckets bootstrapped; three tests passed only after the first
+  one had created them (failed alone or in random order).
+
 ## [0.7.0] — 2026-11-05
 
 First release, extracted from cairn-provider-garmin 0.7.0; implements the
