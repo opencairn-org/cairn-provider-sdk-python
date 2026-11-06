@@ -29,15 +29,19 @@ distribution, so a worker no longer vendors them.
 
 ## Install
 
-The package is not on PyPI yet. Depend on the release tag or a checkout:
+The package is not on PyPI. Every [GitHub release](https://github.com/opencairn-org/cairn-provider-sdk-python/releases)
+carries the wheel the release workflow built, signed and attested; depend on it:
 
 ```toml
 [project]
-dependencies = ["cairn-provider-sdk"]
+dependencies = ["cairn-provider-sdk>=0.7.1,<0.8"]
 
 [tool.uv.sources]
-cairn-provider-sdk = { git = "https://github.com/opencairn-org/cairn-provider-sdk-python", tag = "v0.7.0" }
+cairn-provider-sdk = { url = "https://github.com/opencairn-org/cairn-provider-sdk-python/releases/download/v0.7.1/cairn_provider_sdk-0.7.1-py3-none-any.whl" }
 ```
+
+`uv lock` records the wheel's hash. A git source (`{ git = "…", tag = "v0.7.1" }`)
+works too but needs git wherever the worker is built.
 
 Python 3.14; runtime dependencies are `nats-py`, `protobuf` and `requests`.
 

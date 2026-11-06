@@ -8,28 +8,11 @@ major.minor tracks cairn-core. Dates are ISO-8601.
 
 ## [Unreleased]
 
-### Added
-- `cairn_provider_sdk.testing`: `validate_activity`, `validate_metric`,
-  `result_problems` and `assert_importable` apply core's import rules to a
-  result (activity: known type, time order, durations, IANA timezone;
-  metric: user, account and external_id set, a timestamp, one value, a
-  health data type or valid store key, the value shape a reserved key
-  dictates; a value sent both as a data type and as its reserved store
-  twin), as the Go SDK's `sdktest` does. `FakeCore` records the problems of
-  every result it collects and `close()` fails on any.
+## [0.7.1] — 2026-11-06
 
-### Fixed
-- Integration tests: each test runs against its own `nats-server` with core's
-  streams and buckets bootstrapped; three tests passed only after the first
-  one had created them (failed alone or in random order).
-- `make mutate`: the testing kit is excluded again (`testing/*`) and
-  `examples/` and the generated `cairn/` package are copied next to the
-  mutants, so the run gets past its baseline test run.
-
-## [0.7.0] — 2026-11-05
-
-First release, extracted from cairn-provider-garmin 0.7.0; implements the
-cairn-core 0.7 worker contract.
+First release, extracted from cairn-provider-garmin 0.7.0. Implements the
+cairn-core 0.7 worker contract and is released in lockstep with cairn-core
+0.7.1; cairn-provider-garmin 0.7.1 is built on it.
 
 ### Added
 - `Worker`: NATS connection (enrollment token or user/password), the core
@@ -60,3 +43,11 @@ cairn-core 0.7 worker contract.
 - The generated contract stubs `cairn.v1` and `cairn.worker.v1` ship in the
   distribution; `scripts/sync-proto.sh` regenerates them from cairn-core.
 - `examples/minimal`: a runnable worker for a fake provider, tested end to end.
+- `cairn_provider_sdk.testing`: `validate_activity`, `validate_metric`,
+  `result_problems` and `assert_importable` apply core's import rules to a
+  result (activity: known type, time order, durations, IANA timezone;
+  metric: user, account and external_id set, a timestamp, one value, a
+  health data type or valid store key, the value shape a reserved key
+  dictates; a value sent both as a data type and as its reserved store
+  twin), as the Go SDK's `sdktest` does. `FakeCore` records the problems of
+  every result it collects and `close()` fails on any.

@@ -1,6 +1,6 @@
 [project]
 name = "cairn-provider-sdk"
-version = "0.7.0"
+version = "0.7.1"
 description = "SDK for writing Cairn provider workers in Python: NATS runtime, claim-check results, archive, tokens, rate limits"
 readme = "README.md"
 license = "Apache-2.0"
